@@ -1,6 +1,6 @@
 {
   "name": "@pkprosol/coach",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Daily AI work coach — analyzes your Claude Code & Claude App sessions to deliver one lesson + one tip daily",
   "type": "module",
   "bin": {

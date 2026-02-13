@@ -350,39 +350,46 @@ ${chalk.bold("Usage:")}
 }
 
 // --- Main ---
-const command = process.argv[2];
+async function main(): Promise<void> {
+  const command = process.argv[2];
 
-switch (command) {
-  case "handoff":
-    handleHandoff();
-    break;
-  case "focus":
-    handleFocus();
-    break;
-  case "recap":
-    handleRecap();
-    break;
-  case "goals":
-    handleGoals(process.argv.slice(3));
-    break;
-  case "compare":
-    handleCompare();
-    break;
-  case "history":
-    handleHistoryCmd();
-    break;
-  case "streak":
-    handleStreakCmd();
-    break;
-  case "rate":
-    handleRate(process.argv[3] ?? "");
-    break;
-  case "help":
-  case "--help":
-  case "-h":
-    handleHelp();
-    break;
-  default:
-    handleDefault();
-    break;
+  switch (command) {
+    case "handoff":
+      await handleHandoff();
+      break;
+    case "focus":
+      await handleFocus();
+      break;
+    case "recap":
+      handleRecap();
+      break;
+    case "goals":
+      handleGoals(process.argv.slice(3));
+      break;
+    case "compare":
+      handleCompare();
+      break;
+    case "history":
+      handleHistoryCmd();
+      break;
+    case "streak":
+      handleStreakCmd();
+      break;
+    case "rate":
+      handleRate(process.argv[3] ?? "");
+      break;
+    case "help":
+    case "--help":
+    case "-h":
+      handleHelp();
+      break;
+    default:
+      await handleDefault();
+      break;
+  }
 }
+
+main().catch((err) => {
+  console.error(renderError(err.message ?? "Unexpected error"));
+  process.exit(1);
+});
