@@ -1,0 +1,5 @@
+src/
+bin/
+postinstall.ts
+tsconfig.json
+.gitignore

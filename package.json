@@ -1,0 +1,42 @@
+{
+  "name": "@pkprosol/coach",
+  "version": "1.0.0",
+  "description": "Daily AI work coach — analyzes your Claude Code & Claude App sessions to deliver one lesson + one tip daily",
+  "type": "module",
+  "bin": {
+    "coach": "./dist/bin/coach.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "postinstall": "node dist/postinstall.js || true"
+  },
+  "files": [
+    "dist",
+    "skill"
+  ],
+  "keywords": [
+    "claude",
+    "claude-code",
+    "ai",
+    "coach",
+    "productivity",
+    "developer-tools",
+    "cli"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pkprosol/coach"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "chalk": "^5.4.1",
+    "ora": "^8.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
