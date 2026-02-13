@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import type { Insight, CoachState, StoredInsight, Goal, CollectedData, DailyStat } from "./types.js";
+import type { Insight, CoachState, StoredInsight, Goal, CollectedData, DailyStat, CostAnalysis } from "./types.js";
 
 const WIDTH = 50;
 
@@ -180,6 +180,7 @@ export function renderWelcome(): string {
   out.push(padLine("  " + chalk.cyan("coach") + "           Today's lesson + tip"));
   out.push(padLine("  " + chalk.cyan("coach handoff") + "   Handoff note for your work"));
   out.push(padLine("  " + chalk.cyan("coach focus") + "     Focus & context-switching"));
+  out.push(padLine("  " + chalk.cyan("coach costs") + "     Cost analysis & LLM tips"));
   out.push(padLine("  " + chalk.cyan("coach recap") + "     Quick stats (no AI)"));
   out.push(padLine("  " + chalk.cyan("coach goals") + "     Track your goals"));
   out.push(padLine("  " + chalk.cyan("coach compare") + "   Today vs recent averages"));
@@ -385,6 +386,54 @@ export function renderCompare(today: DailyStat, avg: DailyStat): string {
   out.push(padLine(compareVal("Tokens", today.tokens, avg.tokens)));
   out.push(padLine(compareVal("Tool calls", today.toolCalls, avg.toolCalls)));
   out.push(padLine(`  ${"Projects".padEnd(14)} ${chalk.bold(String(today.projects.length).padStart(6))}  ${chalk.dim("avg")} ${String(Math.round(avg.projects.length)).padStart(6)}`));
+  out.push(padLine(""));
+  out.push(boxBot());
+  return out.join("\n");
+}
+
+// === Cost Analysis ===
+
+export function renderCosts(analysis: CostAnalysis): string {
+  const out: string[] = [];
+  out.push(boxTop());
+  out.push(padLine(chalk.bold.white("  COST ANALYSIS")));
+  out.push(boxMid());
+
+  // Estimated cost
+  out.push(padLine(""));
+  out.push(padLine(`  💰 Estimated cost today: ${chalk.bold.yellow(analysis.estimatedCost)}`));
+
+  // Most expensive session
+  out.push(...renderSection("  📊 Most Expensive Session", analysis.mostExpensiveSession));
+
+  // Cost breakdown
+  out.push(...renderSection("  ⚖️  Input vs Output", analysis.costBreakdown));
+
+  // Surprising fact
+  out.push(padLine(""));
+  out.push(padLine(chalk.bold("  🤯 Did You Know?")));
+  for (const line of wrapText(analysis.surprisingFact, WIDTH - 4)) {
+    out.push(padLine("  " + chalk.cyan(line)));
+  }
+
+  // Efficiency tips
+  if (analysis.efficiencyTips.length > 0) {
+    out.push(padLine(""));
+    out.push(padLine(chalk.bold("  💡 Efficiency Tips")));
+    for (const tip of analysis.efficiencyTips) {
+      for (const line of wrapText(`- ${tip}`, WIDTH - 6)) {
+        out.push(padLine("    " + line));
+      }
+    }
+  }
+
+  // Prompt engineering insight
+  out.push(padLine(""));
+  out.push(padLine(chalk.bold("  🧠 Prompt Engineering")));
+  for (const line of wrapText(analysis.promptEngineeringInsight, WIDTH - 4)) {
+    out.push(padLine("  " + chalk.italic(line)));
+  }
+
   out.push(padLine(""));
   out.push(boxBot());
   return out.join("\n");

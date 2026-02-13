@@ -3,7 +3,7 @@ import { createInterface } from "node:readline";
 import ora from "ora";
 import chalk from "chalk";
 import { collectToday } from "../src/collector.js";
-import { analyze, runClaude, buildHandoffPrompt, buildFocusPrompt } from "../src/analyzer.js";
+import { analyze, runClaude, buildHandoffPrompt, buildFocusPrompt, buildCostsPrompt, estimateCosts } from "../src/analyzer.js";
 import {
   renderInsight,
   renderStreak,
@@ -16,6 +16,7 @@ import {
   renderGoals,
   renderCompare,
   renderWelcome,
+  renderCosts,
 } from "../src/display.js";
 import {
   isFirstRun,
@@ -224,6 +225,41 @@ async function handleFocus(): Promise<void> {
   }
 }
 
+async function handleCosts(): Promise<void> {
+  const spinner = ora({ text: "Analyzing costs and token usage...", color: "cyan" }).start();
+
+  const data = collectToday();
+
+  if (data.prompts.length === 0) {
+    spinner.stop();
+    console.log(renderNoData());
+    return;
+  }
+
+  spinner.text = "Crunching cost data...";
+
+  try {
+    const costs = estimateCosts(data);
+    const prompt = buildCostsPrompt(data, costs);
+    const text = await runClaude(prompt);
+    spinner.stop();
+
+    const cleaned = text.replace(/^```json?\s*/, "").replace(/\s*```$/, "").trim();
+    const analysis = JSON.parse(cleaned);
+
+    console.log("");
+    console.log(renderCosts(analysis));
+    console.log("");
+  } catch (err: any) {
+    spinner.stop();
+    if (err.message?.includes("claude CLI not found")) {
+      console.log(renderError("claude CLI not found. Install Claude Code first: https://docs.anthropic.com/en/docs/claude-code"));
+    } else {
+      console.log(renderError(err.message ?? "Cost analysis failed."));
+    }
+  }
+}
+
 function handleRecap(): void {
   const data = collectToday();
 
@@ -339,6 +375,7 @@ ${chalk.bold("Usage:")}
   coach            Today's lesson + tip (default)
   coach handoff    Generate a handoff note for your current work
   coach focus      Analyze context-switching and focus patterns
+  coach costs      Token costs, prompt engineering tips & LLM insights
   coach recap      Quick summary of today's stats (no AI)
   coach goals      Show current goals
   coach goals set  Add a goal: coach goals set "finish auth"
@@ -369,6 +406,9 @@ async function main(): Promise<void> {
       break;
     case "focus":
       await handleFocus();
+      break;
+    case "costs":
+      await handleCosts();
       break;
     case "recap":
       handleRecap();

@@ -9,6 +9,7 @@ export const DIMENSIONS = [
   "Communication Style",
   "Tool Leverage",
   "Problem Decomposition",
+  "Cost Awareness",
 ] as const;
 
 export type Dimension = (typeof DIMENSIONS)[number];
@@ -101,6 +102,27 @@ export interface CoachState {
   notHelpfulCount: number;
   goals: Goal[];
   dailyStats: DailyStat[];
+}
+
+// === Cost Analysis ===
+
+export interface CostEstimate {
+  sessionId: string;
+  project: string;
+  inputCost: number;
+  outputCost: number;
+  totalCost: number;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+export interface CostAnalysis {
+  estimatedCost: string;
+  mostExpensiveSession: string;
+  costBreakdown: string;
+  surprisingFact: string;
+  efficiencyTips: string[];
+  promptEngineeringInsight: string;
 }
 
 // === Raw Claude Code Data Types ===
