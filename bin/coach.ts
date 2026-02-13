@@ -15,8 +15,10 @@ import {
   renderRecap,
   renderGoals,
   renderCompare,
+  renderWelcome,
 } from "../src/display.js";
 import {
+  isFirstRun,
   loadState,
   saveState,
   loadInsights,
@@ -352,6 +354,14 @@ ${chalk.bold("Usage:")}
 // --- Main ---
 async function main(): Promise<void> {
   const command = process.argv[2];
+
+  // Show welcome on first run (no command or default)
+  if (!command && isFirstRun()) {
+    console.log("");
+    console.log(renderWelcome());
+    console.log("");
+    return;
+  }
 
   switch (command) {
     case "handoff":

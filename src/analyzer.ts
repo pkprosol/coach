@@ -4,12 +4,20 @@ import { DIMENSIONS } from "./types.js";
 
 export function runClaude(prompt: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const proc = spawn("claude", ["-p", "--output-format", "text", "--max-tokens", "1024"], {
+    const proc = spawn("claude", ["-p", "--output-format", "text"], {
       stdio: ["pipe", "pipe", "pipe"],
     });
 
     let stdout = "";
     let stderr = "";
+    let rejected = false;
+
+    function fail(err: Error) {
+      if (!rejected) {
+        rejected = true;
+        reject(err);
+      }
+    }
 
     proc.stdout.on("data", (chunk: Buffer) => {
       stdout += chunk.toString();
@@ -19,19 +27,27 @@ export function runClaude(prompt: string): Promise<string> {
       stderr += chunk.toString();
     });
 
+    proc.stdin.on("error", (err: NodeJS.ErrnoException) => {
+      // EPIPE means claude exited before we finished writing — handled in 'close'
+      if (err.code !== "EPIPE") {
+        fail(err);
+      }
+    });
+
     proc.on("error", (err: NodeJS.ErrnoException) => {
       if (err.code === "ENOENT") {
-        reject(new Error("claude CLI not found. Install Claude Code first: https://docs.anthropic.com/en/docs/claude-code"));
+        fail(new Error("claude CLI not found. Install Claude Code first: https://docs.anthropic.com/en/docs/claude-code"));
       } else {
-        reject(err);
+        fail(err);
       }
     });
 
     proc.on("close", (code) => {
+      if (rejected) return;
       if (code === 0) {
         resolve(stdout.trim());
       } else {
-        reject(new Error(stderr.trim() || `claude exited with code ${code}`));
+        fail(new Error(stderr.trim() || `claude exited with code ${code}`));
       }
     });
 

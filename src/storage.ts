@@ -24,6 +24,10 @@ const DEFAULT_STATE: CoachState = {
   dailyStats: [],
 };
 
+export function isFirstRun(): boolean {
+  return !existsSync(STATE_FILE);
+}
+
 export function loadState(): CoachState {
   ensureDir();
   if (!existsSync(STATE_FILE)) {

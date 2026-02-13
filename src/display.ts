@@ -161,6 +161,39 @@ export function renderHistory(insights: StoredInsight[]): string {
   return out.join("\n");
 }
 
+export function renderWelcome(): string {
+  const out: string[] = [];
+  out.push(boxTop());
+  out.push(padLine(chalk.bold.white("  WELCOME TO COACH")));
+  out.push(boxMid());
+  out.push(padLine(""));
+  out.push(padLine("  Coach analyzes your Claude Code and Claude"));
+  out.push(padLine("  App sessions to give you a daily lesson and"));
+  out.push(padLine("  actionable tip — like a personal AI work coach."));
+  out.push(padLine(""));
+  out.push(padLine(chalk.bold("  How it works:")));
+  out.push(padLine("  1. Use Claude Code / Claude App as usual"));
+  out.push(padLine("  2. Run " + chalk.cyan("coach") + " at the end of your day"));
+  out.push(padLine("  3. Get a personalized insight + tip"));
+  out.push(padLine(""));
+  out.push(padLine(chalk.bold("  Commands:")));
+  out.push(padLine("  " + chalk.cyan("coach") + "           Today's lesson + tip"));
+  out.push(padLine("  " + chalk.cyan("coach handoff") + "   Handoff note for your work"));
+  out.push(padLine("  " + chalk.cyan("coach focus") + "     Focus & context-switching"));
+  out.push(padLine("  " + chalk.cyan("coach recap") + "     Quick stats (no AI)"));
+  out.push(padLine("  " + chalk.cyan("coach goals") + "     Track your goals"));
+  out.push(padLine("  " + chalk.cyan("coach compare") + "   Today vs recent averages"));
+  out.push(padLine("  " + chalk.cyan("coach help") + "      All commands"));
+  out.push(padLine(""));
+  out.push(padLine(chalk.bold("  Requirements:")));
+  out.push(padLine("  " + chalk.dim("Claude Code CLI must be installed and")));
+  out.push(padLine("  " + chalk.dim("authenticated. Get it at:")));
+  out.push(padLine("  " + chalk.dim("https://docs.anthropic.com/en/docs/claude-code")));
+  out.push(padLine(""));
+  out.push(boxBot());
+  return out.join("\n");
+}
+
 export function renderNoData(): string {
   return chalk.yellow("No Claude Code sessions found for today.") +
     "\n" +
