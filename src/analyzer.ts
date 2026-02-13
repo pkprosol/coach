@@ -1,6 +1,44 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { spawn } from "node:child_process";
 import type { CollectedData, Dimension, Insight, StoredInsight } from "./types.js";
 import { DIMENSIONS } from "./types.js";
+
+export function runClaude(prompt: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn("claude", ["-p", "--output-format", "text", "--max-tokens", "1024"], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    proc.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+
+    proc.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+
+    proc.on("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "ENOENT") {
+        reject(new Error("claude CLI not found. Install Claude Code first: https://docs.anthropic.com/en/docs/claude-code"));
+      } else {
+        reject(err);
+      }
+    });
+
+    proc.on("close", (code) => {
+      if (code === 0) {
+        resolve(stdout.trim());
+      } else {
+        reject(new Error(stderr.trim() || `claude exited with code ${code}`));
+      }
+    });
+
+    proc.stdin.write(prompt);
+    proc.stdin.end();
+  });
+}
 
 function pickDimension(recentDimensions: Dimension[], data: CollectedData): Dimension {
   // Filter out recently used dimensions
@@ -138,25 +176,109 @@ Guidelines:
 Respond with ONLY the JSON object, no markdown fences or other text.`;
 }
 
+export function buildHandoffPrompt(data: CollectedData): string {
+  const sessionSummaries = data.sessions.map((s) => ({
+    project: s.project,
+    branch: s.gitBranch,
+    messages: s.messageCount,
+    toolCalls: s.toolCallCount,
+    tools: s.toolNames,
+    duration:
+      s.startTime && s.endTime
+        ? `${Math.round((new Date(s.endTime).getTime() - new Date(s.startTime).getTime()) / 60000)}min`
+        : "unknown",
+  }));
+
+  const samplePrompts = data.prompts.slice(0, 30).map((p) => ({
+    text: p.text.slice(0, 400),
+    project: p.project,
+  }));
+
+  return `You are a work session analyzer. Given the developer's Claude Code sessions from today, produce a structured handoff note for when they pause or stop working.
+
+## Today's Session Data
+
+Date: ${data.date}
+Projects: ${data.projectsWorkedOn.join(", ")}
+
+### Sessions
+${JSON.stringify(sessionSummaries, null, 2)}
+
+### User Prompts
+${JSON.stringify(samplePrompts, null, 2)}
+
+## Your Task
+
+Produce a handoff note as a JSON object with these fields:
+
+{
+  "workingOn": "Brief description of what was being worked on (projects, branches, features)",
+  "currentState": "What's done, what's in progress",
+  "keyDecisions": ["Decision 1", "Decision 2"],
+  "nextSteps": ["Next step 1", "Next step 2"],
+  "openQuestions": ["Question 1"] or []
+}
+
+Be specific — reference actual projects, branches, and prompt content.
+Respond with ONLY the JSON object, no markdown fences or other text.`;
+}
+
+export function buildFocusPrompt(data: CollectedData): string {
+  const sessionTimeline = data.sessions.map((s) => ({
+    project: s.project,
+    start: s.startTime,
+    end: s.endTime,
+    prompts: s.userMessageCount,
+  }));
+
+  const projectSwitches: string[] = [];
+  for (let i = 1; i < data.prompts.length; i++) {
+    if (data.prompts[i].project !== data.prompts[i - 1].project) {
+      projectSwitches.push(
+        `${data.prompts[i - 1].project} → ${data.prompts[i].project} at ${data.prompts[i].timestamp}`
+      );
+    }
+  }
+
+  return `You are a focus and productivity analyst. Analyze this developer's context-switching patterns and suggest optimal focus blocks.
+
+## Today's Data
+
+Date: ${data.date}
+Total sessions: ${data.sessions.length}
+Projects: ${data.projectsWorkedOn.join(", ")}
+
+### Session Timeline
+${JSON.stringify(sessionTimeline, null, 2)}
+
+### Context Switches
+${projectSwitches.length > 0 ? projectSwitches.join("\n") : "No context switches detected"}
+
+## Your Task
+
+Analyze the patterns and return a JSON object:
+
+{
+  "contextSwitches": ${projectSwitches.length},
+  "longestFocusPeriod": "Description of longest uninterrupted focus period",
+  "shortestFocusPeriod": "Description of shortest period before switching",
+  "pattern": "Overall observation about their focus pattern today (2-3 sentences)",
+  "suggestions": ["Suggestion 1", "Suggestion 2", "Suggestion 3"]
+}
+
+Be specific and reference actual project names and times.
+Respond with ONLY the JSON object, no markdown fences or other text.`;
+}
+
 export async function analyze(
   data: CollectedData,
   recentDimensions: Dimension[],
-  pastInsights: StoredInsight[],
-  apiKey: string
+  pastInsights: StoredInsight[]
 ): Promise<Insight> {
   const dimension = pickDimension(recentDimensions, data);
   const prompt = buildPrompt(data, dimension, pastInsights);
 
-  const client = new Anthropic({ apiKey });
-
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-5-20250929",
-    max_tokens: 1024,
-    messages: [{ role: "user", content: prompt }],
-  });
-
-  const text =
-    response.content[0].type === "text" ? response.content[0].text : "";
+  const text = await runClaude(prompt);
 
   // Parse JSON from response — handle possible markdown fences
   const cleaned = text.replace(/^```json?\s*/, "").replace(/\s*```$/, "").trim();

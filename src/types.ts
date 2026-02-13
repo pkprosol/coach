@@ -70,6 +70,26 @@ export interface StoredInsight extends Insight {
   rating: "helpful" | "not_helpful" | null;
 }
 
+// === Goals ===
+
+export interface Goal {
+  id: number;
+  text: string;
+  createdDate: string;
+  completedDate: string | null;
+}
+
+// === Daily Stats ===
+
+export interface DailyStat {
+  date: string;
+  sessions: number;
+  prompts: number;
+  tokens: number;
+  projects: string[];
+  toolCalls: number;
+}
+
 // === Coach State ===
 
 export interface CoachState {
@@ -79,7 +99,8 @@ export interface CoachState {
   totalInsights: number;
   helpfulCount: number;
   notHelpfulCount: number;
-  apiKey?: string;
+  goals: Goal[];
+  dailyStats: DailyStat[];
 }
 
 // === Raw Claude Code Data Types ===

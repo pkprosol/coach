@@ -3,27 +3,33 @@ import { createInterface } from "node:readline";
 import ora from "ora";
 import chalk from "chalk";
 import { collectToday } from "../src/collector.js";
-import { analyze } from "../src/analyzer.js";
+import { analyze, runClaude, buildHandoffPrompt, buildFocusPrompt } from "../src/analyzer.js";
 import {
   renderInsight,
   renderStreak,
   renderHistory,
-  renderSetupSuccess,
   renderNoData,
   renderError,
+  renderHandoff,
+  renderFocus,
+  renderRecap,
+  renderGoals,
+  renderCompare,
 } from "../src/display.js";
 import {
   loadState,
   saveState,
-  getApiKey,
-  setApiKey,
   loadInsights,
   appendInsight,
   updateLastInsightRating,
   updateStreak,
   recordDimension,
+  addGoal,
+  completeGoal,
+  clearCompletedGoals,
+  recordDailyStat,
 } from "../src/storage.js";
-import type { StoredInsight } from "../src/types.js";
+import type { StoredInsight, DailyStat } from "../src/types.js";
 
 function askQuestion(prompt: string): Promise<string> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -35,29 +41,7 @@ function askQuestion(prompt: string): Promise<string> {
   });
 }
 
-async function handleSetup(): Promise<void> {
-  const existing = getApiKey();
-  if (existing) {
-    console.log(chalk.dim("API key already configured."));
-    const answer = await askQuestion("Replace it? [y/N] ");
-    if (answer !== "y") return;
-  }
-  const key = await askQuestion("Enter your Anthropic API key: ");
-  if (!key) {
-    console.log(renderError("No key provided."));
-    return;
-  }
-  setApiKey(key);
-  console.log(renderSetupSuccess());
-}
-
 async function handleDefault(): Promise<void> {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    console.log(renderError("No API key found. Run `coach setup` first, or set ANTHROPIC_API_KEY."));
-    return;
-  }
-
   const spinner = ora({ text: "Collecting today's sessions...", color: "cyan" }).start();
 
   // Collect data
@@ -75,14 +59,26 @@ async function handleDefault(): Promise<void> {
   let state = loadState();
   const pastInsights = loadInsights();
 
+  // Record daily stat
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  recordDailyStat({
+    date: today,
+    sessions: data.sessions.length,
+    prompts: data.prompts.length,
+    tokens: data.totalTokens,
+    projects: data.projectsWorkedOn,
+    toolCalls: data.totalToolCalls,
+  });
+
   // Analyze
   let insight;
   try {
-    insight = await analyze(data, state.recentDimensions, pastInsights, apiKey);
+    insight = await analyze(data, state.recentDimensions, pastInsights);
   } catch (err: any) {
     spinner.stop();
-    if (err.status === 401) {
-      console.log(renderError("Invalid API key. Run `coach setup` to update it."));
+    if (err.message?.includes("claude CLI not found")) {
+      console.log(renderError("claude CLI not found. Install Claude Code first: https://docs.anthropic.com/en/docs/claude-code"));
     } else {
       console.log(renderError(err.message ?? "Analysis failed."));
     }
@@ -92,8 +88,6 @@ async function handleDefault(): Promise<void> {
   spinner.stop();
 
   // Update state
-  const now = new Date();
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   state = updateStreak(state, today);
   state = recordDimension(state, insight.dimension);
 
@@ -160,13 +154,195 @@ function handleRate(value: string): void {
   }
 }
 
+async function handleHandoff(): Promise<void> {
+  const spinner = ora({ text: "Collecting sessions for handoff...", color: "cyan" }).start();
+
+  const data = collectToday();
+
+  if (data.prompts.length === 0) {
+    spinner.stop();
+    console.log(renderNoData());
+    return;
+  }
+
+  spinner.text = "Generating handoff note...";
+
+  try {
+    const prompt = buildHandoffPrompt(data);
+    const text = await runClaude(prompt);
+    spinner.stop();
+
+    const cleaned = text.replace(/^```json?\s*/, "").replace(/\s*```$/, "").trim();
+    const handoff = JSON.parse(cleaned);
+
+    console.log("");
+    console.log(renderHandoff(handoff));
+    console.log("");
+  } catch (err: any) {
+    spinner.stop();
+    if (err.message?.includes("claude CLI not found")) {
+      console.log(renderError("claude CLI not found. Install Claude Code first: https://docs.anthropic.com/en/docs/claude-code"));
+    } else {
+      console.log(renderError(err.message ?? "Handoff generation failed."));
+    }
+  }
+}
+
+async function handleFocus(): Promise<void> {
+  const spinner = ora({ text: "Analyzing focus patterns...", color: "cyan" }).start();
+
+  const data = collectToday();
+
+  if (data.prompts.length === 0) {
+    spinner.stop();
+    console.log(renderNoData());
+    return;
+  }
+
+  spinner.text = "Building focus analysis...";
+
+  try {
+    const prompt = buildFocusPrompt(data);
+    const text = await runClaude(prompt);
+    spinner.stop();
+
+    const cleaned = text.replace(/^```json?\s*/, "").replace(/\s*```$/, "").trim();
+    const focus = JSON.parse(cleaned);
+
+    console.log("");
+    console.log(renderFocus(focus));
+    console.log("");
+  } catch (err: any) {
+    spinner.stop();
+    if (err.message?.includes("claude CLI not found")) {
+      console.log(renderError("claude CLI not found. Install Claude Code first: https://docs.anthropic.com/en/docs/claude-code"));
+    } else {
+      console.log(renderError(err.message ?? "Focus analysis failed."));
+    }
+  }
+}
+
+function handleRecap(): void {
+  const data = collectToday();
+
+  if (data.prompts.length === 0) {
+    console.log(renderNoData());
+    return;
+  }
+
+  console.log("");
+  console.log(renderRecap(data));
+  console.log("");
+}
+
+function handleGoals(args: string[]): void {
+  const sub = args[0];
+
+  if (!sub) {
+    // Show goals
+    const state = loadState();
+    console.log("");
+    console.log(renderGoals(state.goals));
+    console.log("");
+    return;
+  }
+
+  if (sub === "set") {
+    const text = args.slice(1).join(" ").replace(/^["']|["']$/g, "");
+    if (!text) {
+      console.log(renderError('Usage: coach goals set "your goal"'));
+      return;
+    }
+    const goal = addGoal(text);
+    console.log(chalk.green("✓") + ` Goal #${goal.id} added: ${goal.text}`);
+    return;
+  }
+
+  if (sub === "done") {
+    const id = parseInt(args[1], 10);
+    if (isNaN(id)) {
+      console.log(renderError("Usage: coach goals done <id>"));
+      return;
+    }
+    const ok = completeGoal(id);
+    if (ok) {
+      console.log(chalk.green("✓") + ` Goal #${id} marked complete.`);
+    } else {
+      console.log(renderError(`Goal #${id} not found or already completed.`));
+    }
+    return;
+  }
+
+  if (sub === "clear") {
+    const count = clearCompletedGoals();
+    console.log(chalk.green("✓") + ` Cleared ${count} completed goal${count !== 1 ? "s" : ""}.`);
+    return;
+  }
+
+  console.log(renderError(`Unknown goals subcommand: ${sub}`));
+}
+
+function handleCompare(): void {
+  const data = collectToday();
+
+  if (data.prompts.length === 0) {
+    console.log(renderNoData());
+    return;
+  }
+
+  const state = loadState();
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+  const todayStat: DailyStat = {
+    date: today,
+    sessions: data.sessions.length,
+    prompts: data.prompts.length,
+    tokens: data.totalTokens,
+    projects: data.projectsWorkedOn,
+    toolCalls: data.totalToolCalls,
+  };
+
+  // Compute 7-day average from stored stats (excluding today)
+  const pastStats = state.dailyStats.filter((s) => s.date !== today).slice(-7);
+
+  if (pastStats.length === 0) {
+    console.log("");
+    console.log(renderRecap(data));
+    console.log(chalk.dim("  No historical data yet for comparison. Run `coach` daily to build history."));
+    console.log("");
+    return;
+  }
+
+  const n = pastStats.length;
+  const avg: DailyStat = {
+    date: `${n}-day avg`,
+    sessions: pastStats.reduce((s, d) => s + d.sessions, 0) / n,
+    prompts: pastStats.reduce((s, d) => s + d.prompts, 0) / n,
+    tokens: pastStats.reduce((s, d) => s + d.tokens, 0) / n,
+    projects: Array(Math.round(pastStats.reduce((s, d) => s + d.projects.length, 0) / n)).fill(""),
+    toolCalls: pastStats.reduce((s, d) => s + d.toolCalls, 0) / n,
+  };
+
+  console.log("");
+  console.log(renderCompare(todayStat, avg));
+  console.log("");
+}
+
 function handleHelp(): void {
   console.log(`
 ${chalk.bold("coach")} — Daily AI Work Coach
 
 ${chalk.bold("Usage:")}
   coach            Today's lesson + tip (default)
-  coach setup      Set your Anthropic API key
+  coach handoff    Generate a handoff note for your current work
+  coach focus      Analyze context-switching and focus patterns
+  coach recap      Quick summary of today's stats (no AI)
+  coach goals      Show current goals
+  coach goals set  Add a goal: coach goals set "finish auth"
+  coach goals done Mark complete: coach goals done 1
+  coach goals clear Clear completed goals
+  coach compare    Compare today vs recent averages
   coach history    Browse past insights
   coach streak     Show current streak + stats
   coach help       Show this help message
@@ -177,8 +353,20 @@ ${chalk.bold("Usage:")}
 const command = process.argv[2];
 
 switch (command) {
-  case "setup":
-    handleSetup();
+  case "handoff":
+    handleHandoff();
+    break;
+  case "focus":
+    handleFocus();
+    break;
+  case "recap":
+    handleRecap();
+    break;
+  case "goals":
+    handleGoals(process.argv.slice(3));
+    break;
+  case "compare":
+    handleCompare();
     break;
   case "history":
     handleHistoryCmd();

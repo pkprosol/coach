@@ -30,7 +30,6 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
     "chalk": "^5.4.1",
     "ora": "^8.2.0"
   },

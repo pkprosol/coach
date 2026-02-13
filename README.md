@@ -1,6 +1,6 @@
 # Coach — Daily AI Work Coach
 
-Analyzes your **Claude Code** and **Claude App** sessions to deliver one lesson + one tip daily. Built around the [Hooked model](https://www.nirandfar.com/hooked/) to make self-improvement habitual.
+Analyzes your **Claude Code** and **Claude App** sessions to deliver insights, handoff notes, focus analysis, and more. A swiss army knife for developer productivity.
 
 ```
 ┌──────────────────────────────────────────────────┐
@@ -32,28 +32,52 @@ npm install -g @pkprosol/coach
 
 This installs the `coach` CLI and auto-registers `/coach` as a slash command in Claude Code.
 
-## Setup
+## Requirements
 
-```bash
-coach setup   # paste your Anthropic API key
-```
-
-Or set `ANTHROPIC_API_KEY` in your environment.
+- Node.js 18+
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
+- Claude Code and/or Claude Desktop App (for session data)
 
 ## Usage
 
-### Terminal
+### Core
+
 ```bash
-coach            # today's lesson + tip
-coach streak     # current streak + stats
-coach history    # browse past insights
+coach              # Today's lesson + tip (AI-powered)
+coach handoff      # Generate a handoff note for your current work
+coach focus        # Analyze context-switching and focus patterns
+```
+
+### Quick Stats (no AI)
+
+```bash
+coach recap        # Summary of today's sessions, prompts, tokens, tools
+coach compare      # Compare today vs your 7-day averages
+```
+
+### Goals
+
+```bash
+coach goals              # Show current goals
+coach goals set "text"   # Add a new goal
+coach goals done 1       # Mark goal #1 complete
+coach goals clear        # Clear completed goals
+```
+
+### Meta
+
+```bash
+coach history      # Browse past insights
+coach streak       # Current streak + stats
+coach help         # Show all commands
 ```
 
 ### Claude Code
+
 ```
-/coach           # same thing, right inside Claude
-/coach streak
-/coach history
+/coach             # Same thing, right inside Claude
+/coach handoff
+/coach recap
 ```
 
 ## How it works
@@ -63,6 +87,8 @@ coach history    # browse past insights
 3. **Delivers** one specific lesson + one actionable tip, with examples from your actual sessions
 4. **Learns** from your ratings to improve future insights
 
+AI-powered commands (`coach`, `handoff`, `focus`) use the Claude CLI under the hood — no separate API key needed.
+
 ## Data sources
 
 | Source | Location | What's collected |
@@ -70,10 +96,4 @@ coach history    # browse past insights
 | Claude Code | `~/.claude/` | Prompts, session transcripts, tool usage, tokens |
 | Claude App | `~/Library/Application Support/Claude/` | Cowork/agent mode audit logs |
 
-All data stays local. Only a summary is sent to the Claude API for analysis.
-
-## Requirements
-
-- Node.js 18+
-- An Anthropic API key
-- Claude Code and/or Claude Desktop App
+All data stays local. Only a summary is sent to Claude for analysis.

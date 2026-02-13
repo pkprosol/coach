@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import type { Insight, CoachState, StoredInsight } from "./types.js";
+import type { Insight, CoachState, StoredInsight, Goal, CollectedData, DailyStat } from "./types.js";
 
 const WIDTH = 50;
 
@@ -161,10 +161,6 @@ export function renderHistory(insights: StoredInsight[]): string {
   return out.join("\n");
 }
 
-export function renderSetupSuccess(): string {
-  return chalk.green("✓") + " API key saved. Run " + chalk.bold("coach") + " to get your first insight!";
-}
-
 export function renderNoData(): string {
   return chalk.yellow("No Claude Code sessions found for today.") +
     "\n" +
@@ -173,4 +169,190 @@ export function renderNoData(): string {
 
 export function renderError(msg: string): string {
   return chalk.red("Error: ") + msg;
+}
+
+// === Handoff ===
+
+export function renderHandoff(handoff: {
+  workingOn: string;
+  currentState: string;
+  keyDecisions: string[];
+  nextSteps: string[];
+  openQuestions: string[];
+}): string {
+  const out: string[] = [];
+  out.push(boxTop());
+  out.push(padLine(chalk.bold.white("  HANDOFF NOTE")));
+  out.push(boxMid());
+
+  out.push(...renderSection("  Working On", handoff.workingOn));
+  out.push(...renderSection("  Current State", handoff.currentState));
+
+  if (handoff.keyDecisions.length > 0) {
+    out.push(padLine(""));
+    out.push(padLine(chalk.bold("  Key Decisions")));
+    for (const d of handoff.keyDecisions) {
+      for (const line of wrapText(`- ${d}`, WIDTH - 6)) {
+        out.push(padLine("    " + line));
+      }
+    }
+  }
+
+  if (handoff.nextSteps.length > 0) {
+    out.push(padLine(""));
+    out.push(padLine(chalk.bold("  Next Steps")));
+    for (const s of handoff.nextSteps) {
+      for (const line of wrapText(`- ${s}`, WIDTH - 6)) {
+        out.push(padLine("    " + line));
+      }
+    }
+  }
+
+  if (handoff.openQuestions.length > 0) {
+    out.push(padLine(""));
+    out.push(padLine(chalk.bold("  Open Questions")));
+    for (const q of handoff.openQuestions) {
+      for (const line of wrapText(`? ${q}`, WIDTH - 6)) {
+        out.push(padLine("    " + line));
+      }
+    }
+  }
+
+  out.push(padLine(""));
+  out.push(boxBot());
+  return out.join("\n");
+}
+
+// === Focus ===
+
+export function renderFocus(focus: {
+  contextSwitches: number;
+  longestFocusPeriod: string;
+  shortestFocusPeriod: string;
+  pattern: string;
+  suggestions: string[];
+}): string {
+  const out: string[] = [];
+  out.push(boxTop());
+  out.push(padLine(chalk.bold.white("  FOCUS ANALYSIS")));
+  out.push(boxMid());
+
+  out.push(padLine(""));
+  out.push(padLine(`  Context switches: ${chalk.bold.yellow(String(focus.contextSwitches))}`));
+  out.push(...renderSection("  Longest Focus", focus.longestFocusPeriod));
+  out.push(...renderSection("  Shortest Focus", focus.shortestFocusPeriod));
+  out.push(...renderSection("  Pattern", focus.pattern));
+
+  if (focus.suggestions.length > 0) {
+    out.push(padLine(""));
+    out.push(padLine(chalk.bold("  Suggestions")));
+    for (const s of focus.suggestions) {
+      for (const line of wrapText(`- ${s}`, WIDTH - 6)) {
+        out.push(padLine("    " + line));
+      }
+    }
+  }
+
+  out.push(padLine(""));
+  out.push(boxBot());
+  return out.join("\n");
+}
+
+// === Recap ===
+
+export function renderRecap(data: CollectedData): string {
+  const out: string[] = [];
+  out.push(boxTop());
+  out.push(padLine(chalk.bold.white("  TODAY'S RECAP")));
+  out.push(boxMid());
+
+  out.push(padLine(""));
+  out.push(padLine(`  Date: ${chalk.bold(data.date)}`));
+  out.push(padLine(`  Projects: ${chalk.cyan(data.projectsWorkedOn.join(", ") || "none")}`));
+  out.push(padLine(`  Sessions: ${chalk.bold(String(data.sessions.length))}`));
+  out.push(padLine(`  Prompts: ${chalk.bold(String(data.prompts.length))}`));
+  out.push(padLine(`  Tokens: ${chalk.bold(data.totalTokens.toLocaleString())}`));
+  out.push(padLine(`  Tool calls: ${chalk.bold(String(data.totalToolCalls))}`));
+
+  // Time spent
+  let totalMinutes = 0;
+  for (const s of data.sessions) {
+    if (s.startTime && s.endTime) {
+      totalMinutes += Math.round(
+        (new Date(s.endTime).getTime() - new Date(s.startTime).getTime()) / 60000
+      );
+    }
+  }
+  if (totalMinutes > 0) {
+    const hours = Math.floor(totalMinutes / 60);
+    const mins = totalMinutes % 60;
+    out.push(padLine(`  Time: ${chalk.bold(hours > 0 ? `${hours}h ${mins}m` : `${mins}m`)}`));
+  }
+
+  // Unique tools
+  const allTools = new Set<string>();
+  for (const s of data.sessions) {
+    for (const t of s.toolNames) allTools.add(t);
+  }
+  if (allTools.size > 0) {
+    out.push(padLine(`  Tools used: ${chalk.dim([...allTools].join(", "))}`));
+  }
+
+  out.push(padLine(""));
+  out.push(boxBot());
+  return out.join("\n");
+}
+
+// === Goals ===
+
+export function renderGoals(goals: Goal[]): string {
+  const out: string[] = [];
+  out.push(boxTop());
+  out.push(padLine(chalk.bold.white("  GOALS")));
+  out.push(boxMid());
+
+  if (goals.length === 0) {
+    out.push(padLine(""));
+    out.push(padLine(chalk.dim("  No goals set. Use `coach goals set \"your goal\"` to add one.")));
+    out.push(padLine(""));
+  } else {
+    out.push(padLine(""));
+    for (const g of goals) {
+      const status = g.completedDate
+        ? chalk.green("[done]")
+        : chalk.yellow("[    ]");
+      const text = g.completedDate ? chalk.strikethrough.dim(g.text) : g.text;
+      out.push(padLine(`  ${status} ${chalk.dim(`#${g.id}`)} ${text}`));
+    }
+    out.push(padLine(""));
+  }
+
+  out.push(boxBot());
+  return out.join("\n");
+}
+
+// === Compare ===
+
+export function renderCompare(today: DailyStat, avg: DailyStat): string {
+  const out: string[] = [];
+  out.push(boxTop());
+  out.push(padLine(chalk.bold.white("  TODAY vs 7-DAY AVERAGE")));
+  out.push(boxMid());
+
+  function compareVal(label: string, todayVal: number, avgVal: number): string {
+    const diff = todayVal - avgVal;
+    const arrow = diff > 0 ? chalk.green("^") : diff < 0 ? chalk.red("v") : chalk.dim("=");
+    const diffStr = diff !== 0 ? ` (${diff > 0 ? "+" : ""}${Math.round(diff)})` : "";
+    return `  ${label.padEnd(14)} ${chalk.bold(String(todayVal).padStart(6))}  ${chalk.dim("avg")} ${String(Math.round(avgVal)).padStart(6)}  ${arrow}${diffStr}`;
+  }
+
+  out.push(padLine(""));
+  out.push(padLine(compareVal("Sessions", today.sessions, avg.sessions)));
+  out.push(padLine(compareVal("Prompts", today.prompts, avg.prompts)));
+  out.push(padLine(compareVal("Tokens", today.tokens, avg.tokens)));
+  out.push(padLine(compareVal("Tool calls", today.toolCalls, avg.toolCalls)));
+  out.push(padLine(`  ${"Projects".padEnd(14)} ${chalk.bold(String(today.projects.length).padStart(6))}  ${chalk.dim("avg")} ${String(Math.round(avg.projects.length)).padStart(6)}`));
+  out.push(padLine(""));
+  out.push(boxBot());
+  return out.join("\n");
 }
