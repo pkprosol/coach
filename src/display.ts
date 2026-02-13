@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import type { Insight, CoachState, StoredInsight, Goal, CollectedData, DailyStat, CostAnalysis } from "./types.js";
+import type { Insight, CoachState, StoredInsight, Goal, CollectedData, DailyStat, CostAnalysis, StrategizeAnalysis } from "./types.js";
 
 const WIDTH = 50;
 
@@ -177,14 +177,15 @@ export function renderWelcome(): string {
   out.push(padLine("  3. Get a personalized insight + tip"));
   out.push(padLine(""));
   out.push(padLine(chalk.bold("  Commands:")));
-  out.push(padLine("  " + chalk.cyan("coach") + "           Today's lesson + tip"));
-  out.push(padLine("  " + chalk.cyan("coach handoff") + "   Handoff note for your work"));
-  out.push(padLine("  " + chalk.cyan("coach focus") + "     Focus & context-switching"));
-  out.push(padLine("  " + chalk.cyan("coach costs") + "     Cost analysis & LLM tips"));
-  out.push(padLine("  " + chalk.cyan("coach recap") + "     Quick stats (no AI)"));
-  out.push(padLine("  " + chalk.cyan("coach goals") + "     Track your goals"));
-  out.push(padLine("  " + chalk.cyan("coach compare") + "   Today vs recent averages"));
-  out.push(padLine("  " + chalk.cyan("coach help") + "      All commands"));
+  out.push(padLine("  " + chalk.cyan("coach") + "            Today's lesson + tip"));
+  out.push(padLine("  " + chalk.cyan("coach strategize") + " Plan tomorrow's focus"));
+  out.push(padLine("  " + chalk.cyan("coach handoff") + "    Handoff note for your work"));
+  out.push(padLine("  " + chalk.cyan("coach focus") + "      Focus & context-switching"));
+  out.push(padLine("  " + chalk.cyan("coach costs") + "      Cost analysis & LLM tips"));
+  out.push(padLine("  " + chalk.cyan("coach recap") + "      Quick stats (no AI)"));
+  out.push(padLine("  " + chalk.cyan("coach goals") + "      Track your goals"));
+  out.push(padLine("  " + chalk.cyan("coach compare") + "    Today vs recent averages"));
+  out.push(padLine("  " + chalk.cyan("coach help") + "       All commands"));
   out.push(padLine(""));
   out.push(padLine(chalk.bold("  Requirements:")));
   out.push(padLine("  " + chalk.dim("Claude Code CLI must be installed and")));
@@ -437,4 +438,65 @@ export function renderCosts(analysis: CostAnalysis): string {
   out.push(padLine(""));
   out.push(boxBot());
   return out.join("\n");
+}
+
+// === Strategize ===
+
+export function renderStrategize(analysis: StrategizeAnalysis): string {
+  const out: string[] = [];
+  out.push(boxTop());
+  out.push(padLine(chalk.bold.white("  STRATEGIZE — TOMORROW'S PLAN")));
+  out.push(boxMid());
+
+  // Recent patterns
+  out.push(...renderSection("  📊 Recent Patterns", analysis.recentPatterns));
+
+  // High impact areas
+  if (analysis.highImpactAreas.length > 0) {
+    out.push(padLine(""));
+    out.push(padLine(chalk.bold("  🎯 High-Impact Areas")));
+    for (let i = 0; i < analysis.highImpactAreas.length; i++) {
+      const area = analysis.highImpactAreas[i];
+      out.push(padLine(""));
+      out.push(padLine(`  ${chalk.bold.cyan(`${i + 1}. ${area.area}`)}`));
+      for (const line of wrapText(area.why, WIDTH - 6)) {
+        out.push(padLine("    " + line));
+      }
+      for (const line of wrapText(`→ ${area.suggestedAction}`, WIDTH - 6)) {
+        out.push(padLine("    " + chalk.green(line)));
+      }
+    }
+  }
+
+  // Tomorrow plan
+  if (analysis.tomorrowPlan.length > 0) {
+    out.push(padLine(""));
+    out.push(padLine(chalk.bold("  📋 Tomorrow's Action Plan")));
+    for (let i = 0; i < analysis.tomorrowPlan.length; i++) {
+      for (const line of wrapText(`${i + 1}. ${analysis.tomorrowPlan[i]}`, WIDTH - 6)) {
+        out.push(padLine("    " + line));
+      }
+    }
+  }
+
+  // Avoid
+  out.push(...renderSection("  🚫 Deprioritize", analysis.avoidTomorrow));
+
+  // Motivation
+  out.push(padLine(""));
+  out.push(padLine("  🌱 " + chalk.italic(analysis.motivationalNote)));
+
+  out.push(padLine(""));
+  out.push(boxBot());
+  return out.join("\n");
+}
+
+// === Cost Note (inline for default command) ===
+
+export function renderCostNote(totalCost: number, sessions: number, tokens: number): string {
+  const costStr = totalCost < 0.01 ? "<$0.01" : `~$${totalCost.toFixed(2)}`;
+  const tokStr = tokens >= 1_000_000
+    ? `${(tokens / 1_000_000).toFixed(1)}M`
+    : `${(tokens / 1000).toFixed(0)}k`;
+  return chalk.dim(`  💰 Today so far: ${costStr} across ${sessions} session${sessions !== 1 ? "s" : ""} (${tokStr} tokens). Run \`coach costs\` for details.`);
 }

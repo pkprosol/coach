@@ -3,7 +3,7 @@ import { createInterface } from "node:readline";
 import ora from "ora";
 import chalk from "chalk";
 import { collectToday } from "../src/collector.js";
-import { analyze, runClaude, buildHandoffPrompt, buildFocusPrompt, buildCostsPrompt, estimateCosts } from "../src/analyzer.js";
+import { analyze, runClaude, buildHandoffPrompt, buildFocusPrompt, buildCostsPrompt, buildStrategizePrompt, estimateCosts } from "../src/analyzer.js";
 import {
   renderInsight,
   renderStreak,
@@ -17,6 +17,8 @@ import {
   renderCompare,
   renderWelcome,
   renderCosts,
+  renderStrategize,
+  renderCostNote,
 } from "../src/display.js";
 import {
   isFirstRun,
@@ -97,6 +99,13 @@ async function handleDefault(): Promise<void> {
   // Display
   console.log("");
   console.log(renderInsight(insight, state));
+
+  // Cost note
+  const costs = estimateCosts(data);
+  const totalCost = costs.reduce((s, c) => s + c.totalCost, 0);
+  if (totalCost > 0 || data.totalTokens > 0) {
+    console.log(renderCostNote(totalCost, data.sessions.length, data.totalTokens));
+  }
   console.log("");
 
   // Save insight (without rating yet)
@@ -367,24 +376,72 @@ function handleCompare(): void {
   console.log("");
 }
 
+async function handleStrategize(): Promise<void> {
+  const spinner = ora({ text: "Collecting recent sessions...", color: "cyan" }).start();
+
+  // Collect data for the last 5 days
+  const recentDays: import("../src/types.js").CollectedData[] = [];
+  for (let i = 0; i < 5; i++) {
+    const date = new Date();
+    date.setDate(date.getDate() - i);
+    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    const dayData = collectToday(dateStr);
+    if (dayData.prompts.length > 0) {
+      recentDays.push(dayData);
+    }
+  }
+
+  if (recentDays.length === 0) {
+    spinner.stop();
+    console.log(renderNoData());
+    return;
+  }
+
+  spinner.text = `Found data across ${recentDays.length} day${recentDays.length !== 1 ? "s" : ""}. Building strategy...`;
+
+  const state = loadState();
+  const pastInsights = loadInsights();
+
+  try {
+    const prompt = buildStrategizePrompt(recentDays, state.dailyStats, pastInsights, state.goals);
+    const text = await runClaude(prompt);
+    spinner.stop();
+
+    const cleaned = text.replace(/^```json?\s*/, "").replace(/\s*```$/, "").trim();
+    const analysis = JSON.parse(cleaned);
+
+    console.log("");
+    console.log(renderStrategize(analysis));
+    console.log("");
+  } catch (err: any) {
+    spinner.stop();
+    if (err.message?.includes("claude CLI not found")) {
+      console.log(renderError("claude CLI not found. Install Claude Code first: https://docs.anthropic.com/en/docs/claude-code"));
+    } else {
+      console.log(renderError(err.message ?? "Strategy analysis failed."));
+    }
+  }
+}
+
 function handleHelp(): void {
   console.log(`
 ${chalk.bold("coach")} — Daily AI Work Coach
 
 ${chalk.bold("Usage:")}
-  coach            Today's lesson + tip (default)
-  coach handoff    Generate a handoff note for your current work
-  coach focus      Analyze context-switching and focus patterns
-  coach costs      Token costs, prompt engineering tips & LLM insights
-  coach recap      Quick summary of today's stats (no AI)
-  coach goals      Show current goals
-  coach goals set  Add a goal: coach goals set "finish auth"
-  coach goals done Mark complete: coach goals done 1
+  coach             Today's lesson + tip (default)
+  coach strategize  Plan tomorrow based on recent work patterns
+  coach handoff     Generate a handoff note for your current work
+  coach focus       Analyze context-switching and focus patterns
+  coach costs       Token costs, prompt engineering tips & LLM insights
+  coach recap       Quick summary of today's stats (no AI)
+  coach goals       Show current goals
+  coach goals set   Add a goal: coach goals set "finish auth"
+  coach goals done  Mark complete: coach goals done 1
   coach goals clear Clear completed goals
-  coach compare    Compare today vs recent averages
-  coach history    Browse past insights
-  coach streak     Show current streak + stats
-  coach help       Show this help message
+  coach compare     Compare today vs recent averages
+  coach history     Browse past insights
+  coach streak      Show current streak + stats
+  coach help        Show this help message
 `);
 }
 
@@ -397,6 +454,8 @@ async function main(): Promise<void> {
     console.log("");
     console.log(renderWelcome());
     console.log("");
+    // Save initial state so isFirstRun() returns false next time
+    saveState(loadState());
     return;
   }
 
@@ -409,6 +468,9 @@ async function main(): Promise<void> {
       break;
     case "costs":
       await handleCosts();
+      break;
+    case "strategize":
+      await handleStrategize();
       break;
     case "recap":
       handleRecap();

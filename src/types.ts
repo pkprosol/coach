@@ -125,6 +125,22 @@ export interface CostAnalysis {
   promptEngineeringInsight: string;
 }
 
+// === Strategize Analysis ===
+
+export interface StrategizeArea {
+  area: string;
+  why: string;
+  suggestedAction: string;
+}
+
+export interface StrategizeAnalysis {
+  recentPatterns: string;
+  highImpactAreas: StrategizeArea[];
+  tomorrowPlan: string[];
+  avoidTomorrow: string;
+  motivationalNote: string;
+}
+
 // === Raw Claude Code Data Types ===
 
 export interface HistoryEntry {

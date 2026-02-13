@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import type { CollectedData, CostEstimate, Dimension, Insight, StoredInsight } from "./types.js";
+import type { CollectedData, CostEstimate, Dimension, Insight, StoredInsight, DailyStat, Goal } from "./types.js";
 import { DIMENSIONS } from "./types.js";
 
 // Claude Sonnet pricing (most common for Claude Code)
@@ -370,6 +370,95 @@ Guidelines:
 - For surprisingFact and promptEngineeringInsight, teach something genuinely interesting about LLMs, tokenization, attention mechanisms, or prompt engineering that connects to their data.
 - Keep costs in perspective — compare to a cup of coffee, a SaaS subscription, etc.
 - If tool calls are a significant portion of the work, explain how tool use affects costs (each tool result is input tokens on the next turn).
+
+Respond with ONLY the JSON object, no markdown fences or other text.`;
+}
+
+export function buildStrategizePrompt(
+  recentDays: CollectedData[],
+  dailyStats: DailyStat[],
+  pastInsights: StoredInsight[],
+  goals: Goal[]
+): string {
+  const daySummaries = recentDays.map((day) => {
+    const costs = estimateCosts(day);
+    const totalCost = costs.reduce((s, c) => s + c.totalCost, 0);
+    return {
+      date: day.date,
+      projects: day.projectsWorkedOn,
+      sessions: day.sessions.length,
+      prompts: day.prompts.length,
+      tokens: day.totalTokens,
+      toolCalls: day.totalToolCalls,
+      estimatedCost: `$${totalCost.toFixed(4)}`,
+      samplePrompts: day.prompts.slice(0, 15).map((p) => ({
+        text: p.text.slice(0, 300),
+        project: p.project,
+      })),
+      sessionDetails: day.sessions.map((s) => ({
+        project: s.project,
+        branch: s.gitBranch,
+        messages: s.messageCount,
+        toolCalls: s.toolCallCount,
+        tools: s.toolNames,
+        duration:
+          s.startTime && s.endTime
+            ? `${Math.round((new Date(s.endTime).getTime() - new Date(s.startTime).getTime()) / 60000)}min`
+            : "unknown",
+      })),
+    };
+  });
+
+  const recentInsights = pastInsights.slice(-7).map((i) => ({
+    date: i.date,
+    dimension: i.dimension,
+    lesson: i.lesson.slice(0, 200),
+    tip: i.tip.slice(0, 200),
+    rating: i.rating,
+  }));
+
+  const activeGoals = goals.filter((g) => !g.completedDate);
+
+  return `You are Coach, a strategic planning assistant. Analyze this developer's recent days of Claude Code usage to recommend where their time is best spent tomorrow.
+
+## Recent Days of Work
+${JSON.stringify(daySummaries, null, 2)}
+
+## Daily Stats Trend (last ${dailyStats.length} days)
+${JSON.stringify(dailyStats, null, 2)}
+
+## Recent Coaching Insights
+${JSON.stringify(recentInsights, null, 2)}
+
+${activeGoals.length > 0 ? `## Active Goals
+${activeGoals.map((g) => `- #${g.id}: ${g.text} (set ${g.createdDate})`).join("\n")}` : ""}
+
+## Your Task
+
+Analyze the patterns across multiple days — what projects are getting attention, what's been neglected, where momentum is building, where they might be stuck — and return a JSON object:
+
+{
+  "recentPatterns": "2-3 sentences summarizing what you see across the recent days. What projects are hot? Any context-switching patterns? Is effort concentrated or scattered?",
+  "highImpactAreas": [
+    {
+      "area": "Project or task name",
+      "why": "Why this is the highest-impact use of time tomorrow (1-2 sentences)",
+      "suggestedAction": "Specific action to take (1 sentence)"
+    }
+  ],
+  "tomorrowPlan": ["Ordered list of 3-5 concrete things to do tomorrow, phrased as actions"],
+  "avoidTomorrow": "One thing to consciously avoid or deprioritize tomorrow and why (1-2 sentences)",
+  "motivationalNote": "One genuine, grounded sentence connecting their recent work to a bigger picture"
+}
+
+Guidelines:
+- highImpactAreas should have 2-4 items, ranked by impact
+- Reference actual project names, branches, and patterns from the data
+- The tomorrowPlan should be concrete and actionable, not generic
+- If they have active goals, factor those into your recommendations
+- If a project seems stuck (lots of prompts, little progress), call it out
+- If a project has momentum (recent commits, clear direction), suggest riding that wave
+- Be specific. "Continue working on auth" is too vague. "Finish the JWT refresh token flow in coach, then write integration tests" is better.
 
 Respond with ONLY the JSON object, no markdown fences or other text.`;
 }
